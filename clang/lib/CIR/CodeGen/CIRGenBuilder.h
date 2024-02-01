@@ -250,6 +250,9 @@ public:
     if (const auto intVal = attr.dyn_cast<mlir::cir::IntAttr>())
       return intVal.isNullValue();
 
+    if (const auto boolVal = attr.dyn_cast<mlir::cir::BoolAttr>())
+      return !boolVal.getValue();
+
     if (const auto fpVal = attr.dyn_cast<mlir::FloatAttr>()) {
       bool ignored;
       llvm::APFloat FV(+0.0);
@@ -712,21 +715,21 @@ public:
   mlir::Value createGetBitfield(mlir::Location loc, mlir::Type resultType,
                                 mlir::Value addr, mlir::Type storageType,
                                 const CIRGenBitFieldInfo &info,
-                                bool useVolatile) {
+                                bool isLvalueVolatile, bool useVolatile) {
     auto offset = useVolatile ? info.VolatileOffset : info.Offset;
     return create<mlir::cir::GetBitfieldOp>(loc, resultType, addr, storageType,
                                             info.Name, info.Size, offset,
-                                            info.IsSigned);
+                                            info.IsSigned, isLvalueVolatile);
   }
 
   mlir::Value createSetBitfield(mlir::Location loc, mlir::Type resultType,
                                 mlir::Value dstAddr, mlir::Type storageType,
                                 mlir::Value src, const CIRGenBitFieldInfo &info,
-                                bool useVolatile) {
+                                bool isLvalueVolatile, bool useVolatile) {
     auto offset = useVolatile ? info.VolatileOffset : info.Offset;
-    return create<mlir::cir::SetBitfieldOp>(loc, resultType, dstAddr,
-                                            storageType, src, info.Name,
-                                            info.Size, offset, info.IsSigned);
+    return create<mlir::cir::SetBitfieldOp>(
+        loc, resultType, dstAddr, storageType, src, info.Name, info.Size,
+        offset, info.IsSigned, isLvalueVolatile);
   }
 
   /// Create a pointer to a record member.
