@@ -148,6 +148,7 @@ public:
   void buildCopy(QualType type, const AggValueSlot &dest,
                  const AggValueSlot &src);
 
+  mlir::Value buildTmp(Expr *E);
   void buildArrayInit(Address DestPtr, mlir::cir::ArrayType AType,
                       QualType ArrayQTy, Expr *ExprToVisit,
                       ArrayRef<Expr *> Args, Expr *ArrayFiller);
@@ -422,15 +423,40 @@ static bool isTrivialFiller(Expr *E) {
   return false;
 }
 
+mlir::Value AggExprEmitter::buildTmp(Expr *E) {
+  QualType type = E->getType();
+  switch (CGF.getEvaluationKind(type)) {
+  case TEK_Complex:
+  case TEK_Aggregate:
+    llvm_unreachable("NYI");
+  case TEK_Scalar:
+    return CGF.buildScalarExpr(E);
+  }
+}
+
 void AggExprEmitter::buildArrayInit(Address DestPtr, mlir::cir::ArrayType AType,
                                     QualType ArrayQTy, Expr *ExprToVisit,
                                     ArrayRef<Expr *> Args, Expr *ArrayFiller) {
-  uint64_t NumInitElements = Args.size();
+  SmallVector<mlir::Value> Elements;
 
+  for (auto* arg : Args) {
+    auto initVal = buildTmp(arg); 
+    Elements.push_back(initVal);
+  }
+  
+  QualType elementType =
+      CGF.getContext().getAsArrayType(ArrayQTy)->getElementType();
+  auto cirElementType = CGF.convertType(elementType);
+  
+  uint64_t NumInitElements = Args.size();
   uint64_t NumArrayElements = AType.getSize();
   assert(NumInitElements != 0 && "expected at least one initializaed value");
   assert(NumInitElements <= NumArrayElements);
-
+  
+  CGF.getBuilder().create<mlir::cir::ArrayInitOp>(
+     CGF.getLoc(ExprToVisit->getSourceRange()), DestPtr.getPointer(), Elements);
+ 
+#if 0
   QualType elementType =
       CGF.getContext().getAsArrayType(ArrayQTy)->getElementType();
   QualType elementPtrType = CGF.getContext().getPointerType(elementType);
@@ -570,6 +596,7 @@ void AggExprEmitter::buildArrayInit(Address DestPtr, mlir::cir::ArrayType AType,
 
   // Leave the partial-array cleanup if we entered one.
   assert(!dtorKind && "destructed types NIY");
+#endif
 }
 
 /// True if the given aggregate type requires special GC API calls.
@@ -754,6 +781,7 @@ void AggExprEmitter::buildNullInitializationToLValue(mlir::Location loc,
 }
 
 void AggExprEmitter::buildInitializationToLValue(Expr *E, LValue LV) {
+  E->dump();
   QualType type = LV.getType();
   // FIXME: Ignore result?
   // FIXME: Are initializers affected by volatile?

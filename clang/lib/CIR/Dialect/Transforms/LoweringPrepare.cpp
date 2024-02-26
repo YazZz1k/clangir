@@ -71,6 +71,7 @@ struct LoweringPreparePass : public LoweringPrepareBase<LoweringPreparePass> {
   void lowerStdFindOp(StdFindOp op);
   void lowerIterBeginOp(IterBeginOp op);
   void lowerIterEndOp(IterEndOp op);
+  void lowerArrayInit(ArrayInitOp op);
 
   /// Build the function that initializes the specified global
   FuncOp buildCXXGlobalVarDeclInitFunc(GlobalOp op);
@@ -439,6 +440,33 @@ void LoweringPreparePass::lowerIterEndOp(IterEndOp op) {
   op.erase();
 }
 
+void LoweringPreparePass::lowerArrayInit(ArrayInitOp op) {
+  CIRBaseBuilderTy builder(getContext());
+  builder.setInsertionPointAfter(op.getOperation());
+  
+  auto loc = op.getLoc();
+
+  auto elTy = op.getElements()[0].getType();
+  auto elPtrTy = mlir::cir::PointerType::get(&getContext(), elTy);
+
+  auto beginPtr = op.getPtr();
+  auto begin = builder.create<mlir::cir::CastOp>(
+      loc, elPtrTy, mlir::cir::CastKind::array_to_ptrdecay, beginPtr);
+  
+  // TODO: replace with real ptrdiffty
+  auto PtrDiffTy = mlir::cir::IntType::get(&getContext(), 64, true);
+  auto one = builder.create<mlir::cir::ConstantOp>(
+      loc, PtrDiffTy, mlir::cir::IntAttr::get(PtrDiffTy, 1));
+  
+  mlir::Value element = begin;
+  for (auto in : op.getElements()) {
+    builder.create<mlir::cir::StoreOp>(loc, in, element, false);
+    element = builder.create<mlir::cir::PtrStrideOp>(loc, elPtrTy, element, one);
+  }
+
+  op.erase();
+}
+
 void LoweringPreparePass::runOnOp(Operation *op) {
   if (auto getGlobal = dyn_cast<GlobalOp>(op)) {
     lowerGlobalOp(getGlobal);
@@ -452,6 +480,8 @@ void LoweringPreparePass::runOnOp(Operation *op) {
     lowerIterBeginOp(iterBegin);
   } else if (auto iterEnd = dyn_cast<IterEndOp>(op)) {
     lowerIterEndOp(iterEnd);
+  } else if (auto arrayInit = dyn_cast<ArrayInitOp>(op)) {
+    lowerArrayInit(arrayInit);
   }
 }
 
@@ -465,7 +495,7 @@ void LoweringPreparePass::runOnOperation() {
   SmallVector<Operation *> opsToTransform;
   op->walk([&](Operation *op) {
     if (isa<GlobalOp, GetBitfieldOp, SetBitfieldOp, StdFindOp, IterBeginOp,
-            IterEndOp>(op))
+            IterEndOp, ArrayInitOp>(op))
       opsToTransform.push_back(op);
   });
 

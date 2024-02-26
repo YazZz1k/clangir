@@ -2873,6 +2873,23 @@ def UnreachableOp : CIR_Op<"unreachable", [Terminator]> {
   let assemblyFormat = "attr-dict";
 }
 
+def ArrayInitOp: CIR_Op<"array_init"> {
+  let summary = "TODO";
+  let description = [{
+    TODO
+  }];
+
+  let arguments = (ins CIR_PointerType:$ptr, Variadic<CIR_AnyType>:$elements);
+
+  let assemblyFormat = [{
+    `(` $ptr `:` type($ptr) `,`
+       ($elements^ `:` type($elements))? `)` attr-dict
+  }];
+
+  let hasVerifier = 0;
+}
+
+
 //===----------------------------------------------------------------------===//
 // Operations Lowered Directly to LLVM IR
 //
