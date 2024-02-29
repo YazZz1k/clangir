@@ -1273,7 +1273,8 @@ LogicalResult ConversionPatternRewriterImpl::remapValues(
 
 bool ConversionPatternRewriterImpl::isOpIgnored(Operation *op) const {
   // Check to see if this operation was replaced or its parent ignored.
-  return replacements.count(op) || ignoredOps.count(op->getParentOp());
+  return replacements.count(op) || ignoredOps.count(op->getParentOp()) ||
+         ignoredOps.count(op);
 }
 
 void ConversionPatternRewriterImpl::markNestedOpsIgnored(Operation *op) {
@@ -1381,6 +1382,7 @@ void ConversionPatternRewriterImpl::notifyOpReplaced(Operation *op,
     mapping.map(result, newValue);
     resultChanged |= (newValue.getType() != result.getType());
   }
+
   if (resultChanged)
     operationsWithChangedResults.push_back(replacements.size());
 
@@ -2485,7 +2487,17 @@ OperationConverter::finalize(ConversionPatternRewriter &rewriter) {
       // Otherwise, check to see if the type of the result changed.
       if (result.getType() == newValue.getType())
         continue;
-
+#if 0
+      bool legalized = false;
+      for (auto mat : rewriterImpl.unresolvedMaterializations) {
+        auto castedValue = mat.getOp()->getOperand(0);
+        auto type = mat.getOp()->getResult(0).getType();
+        if (result == castedValue && type == newValue.getType())
+          legalized = true;
+      }
+      if (legalized)
+        continue;
+#endif
       // Compute the inverse mapping only if it is really needed.
       if (!inverseMapping)
         inverseMapping = rewriterImpl.mapping.getInverse();
@@ -2531,6 +2543,9 @@ replaceMaterialization(ConversionPatternRewriterImpl &rewriterImpl,
   // point to the replacement values.
   for (auto [matResult, newValue] : llvm::zip(matResults, values)) {
     auto inverseMapIt = inverseMapping.find(matResult);
+
+    rewriterImpl.ignoredOps.insert(matResult.getDefiningOp());
+
     if (inverseMapIt == inverseMapping.end())
       continue;
 
