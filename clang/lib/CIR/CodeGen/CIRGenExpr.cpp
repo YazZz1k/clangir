@@ -570,6 +570,13 @@ void CIRGenFunction::buildStoreOfScalar(mlir::Value Value, Address Addr,
       SrcAlloca.setInitAttr(mlir::UnitAttr::get(builder.getContext()));
   }
 
+  if (Value.getType() != Addr.getElementType()) {
+    [[maybe_unused]] auto FunPtr =
+        Addr.getElementType().dyn_cast<mlir::cir::PointerType>();
+    assert(FunPtr && FunPtr.getPointee().isa<mlir::cir::FuncType>());
+    Value = builder.createBitcast(*currSrcLoc, Value, Addr.getElementType());
+  }
+
   assert(currSrcLoc && "must pass in source location");
   builder.create<mlir::cir::StoreOp>(*currSrcLoc, Value, Addr.getPointer(),
                                      Volatile);
